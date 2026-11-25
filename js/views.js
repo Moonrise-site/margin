@@ -17,7 +17,7 @@ export const ui = {
 };
 
 const S = () => St.state;
-const pcolor = pid => { const p = St.proj(pid); return p ? `var(--c-${p.color})` : 'var(--muted)'; };
+const pcolor = pid => { const p = St.proj(pid); return p ? `${St.colorVar(p.color)}` : 'var(--muted)'; };
 const pname = pid => St.proj(pid)?.name || 'General';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -50,7 +50,7 @@ export function sidebar() {
       <nav class="nav" data-sortable="projects">
         ${St.projects().map(p => `
           <a href="#/p/${p.id}" class="${r === 'p' && ui.param === p.id ? 'on' : ''}" data-sort-id="${p.id}" draggable="false">
-            <span class="dot" style="background:var(--c-${p.color})"></span>
+            <span class="dot" style="background:${St.colorVar(p.color)}"></span>
             <span class="nm">${p.emoji ? esc(p.emoji) + ' ' : ''}${esc(p.name)}</span>
             <span class="count">${St.tasksOf(p.id).filter(x => !x.done).length || ''}</span>
           </a>`).join('')}
@@ -87,7 +87,7 @@ export function taskRow(t, { showProject = true, sortable = false } = {}) {
   const p = St.proj(t.projectId);
   const hot = !t.done && t.due && t.due <= today();
   const chip = !showProject ? '' : p
-    ? `<a class="chip" href="#/p/${p.id}" style="color:var(--c-${p.color})">${esc(p.name)}</a>`
+    ? `<a class="chip" href="#/p/${p.id}" style="color:${St.colorVar(p.color)}">${esc(p.name)}</a>`
     : `<a class="chip" href="#/todo">General</a>`;
   return `
     <div class="row ${t.done ? 'd' : ''}"${sortable ? ` data-sort-id="${t.id}"` : ''}>
@@ -155,12 +155,12 @@ function tile(p) {
   const imgs = St.coverImages(p).slice(0, 3);
   const cover = imgs.length
     ? imgs.map(id => `<div data-img="${id}"></div>`).join('')
-    : `<div class="ph" style="--pc:var(--c-${p.color})"></div>`;
+    : `<div class="ph" style="--pc:${St.colorVar(p.color)}"></div>`;
   return `<a class="tile" href="#/p/${p.id}" data-sort-id="${p.id}" draggable="false">
     <div class="cover">${cover}</div>
     <div class="tb">
       <div class="n serif"><span>${p.emoji ? esc(p.emoji) + ' ' : ''}${esc(p.name)}</span>
-        <div class="ring" title="${done} of ${ts.length} done" style="background:conic-gradient(var(--c-${p.color}) ${pct}%, var(--raise2) 0)"></div></div>
+        <div class="ring" title="${done} of ${ts.length} done" style="background:conic-gradient(${St.colorVar(p.color)} ${pct}%, var(--raise2) 0)"></div></div>
       <div class="stats"><span><b>${ts.length - done}</b> open</span><span><b>${St.notesOf(p.id).length}</b> notes</span>${p.due ? `<span>Due ${fmtDue(p.due)}</span>` : ''}</div>
     </div></a>`;
 }
@@ -181,8 +181,8 @@ export function vProject() {
   if (!p) return `<div class="empty">That project doesn't exist anymore. <a href="#/today"><u>Back to Today</u></a></div>`;
   return `
     <div class="crumbs"><a href="#/today">← Today</a></div>
-    <div class="phead" style="--pc:var(--c-${p.color})">
-      ${p.emoji ? `<span class="emoji">${esc(p.emoji)}</span>` : `<span class="dot" style="background:var(--c-${p.color});width:12px;height:12px;border-radius:4px"></span>`}
+    <div class="phead" style="--pc:${St.colorVar(p.color)}">
+      ${p.emoji ? `<span class="emoji">${esc(p.emoji)}</span>` : `<span class="dot" style="background:${St.colorVar(p.color)};width:12px;height:12px;border-radius:4px"></span>`}
       <h1 class="serif" contenteditable="plaintext-only" spellcheck="false" data-blur="renameProject" data-id="${p.id}">${esc(p.name)}</h1>
       <span class="tag datepick ${p.due ? 'set' : ''}" data-act="pickDate">${p.due ? 'Due ' + fmtDue(p.due) : '+ Due date'}
         <input type="date" value="${p.due || ''}" data-change="projectDue" data-id="${p.id}" tabindex="-1"></span>
@@ -214,42 +214,66 @@ export function todoPanel(pid, withDate = false) {
   </section>`;
 }
 
+// Notes show either as tabs (one note at a time) or as cards (all notes stacked). Chosen per project.
+const notesView = pid => (pid ? St.proj(pid)?.notesView : S().settings.notesView) === 'cards' ? 'cards' : 'tabs';
+const viewToggle = (pid, v) => `<span class="seg" title="How notes are shown">
+  <button class="${v === 'tabs' ? 'on' : ''}" data-act="notesView" data-pid="${pid || ''}" data-v="tabs">Tabs</button><button class="${v === 'cards' ? 'on' : ''}" data-act="notesView" data-pid="${pid || ''}" data-v="cards">Cards</button></span>`;
+
 export function notesPanel(pid) {
   const key = pid || 'general';
   const notes = St.notesOf(pid);
+  const v = notesView(pid);
+  const label = pid ? 'Notes' : 'Loose notes';
+  if (v === 'cards') {
+    return `<div class="notecards">
+      <div class="nc-head"><h3 class="serif">${label}</h3><span class="nc-count">${notes.length || ''}</span>${viewToggle(pid, v)}</div>
+      <div class="stack" data-sortable="notes">
+        ${notes.map(n => `<section class="panel notes card" data-drop="${n.id}" data-sort-id="${n.id}">${noteBody(n, true)}</section>`).join('')}
+      </div>
+      <button class="new-card" data-act="newNote" data-pid="${pid || ''}">+ New note</button>
+    </div>`;
+  }
   const n = notes.find(x => x.id === ui.activeNote[key]) || notes[0];
   const tabs = notes.map(x => `<button class="${x === n ? 'on' : ''}" data-act="openNote" data-pid="${pid || ''}" data-id="${x.id}" data-sort-id="${x.id}">${esc(x.title || 'Untitled')}</button>`).join('');
-  const header = `<h3 class="serif">${pid ? 'Notes' : 'Loose notes'} <span>${n ? 'Edited ' + ago(n.updated) : ''}</span></h3>
+  const header = `<h3 class="serif">${label} <span>${n ? 'Edited ' + ago(n.updated) : ''}</span>${viewToggle(pid, v)}</h3>
     <div class="doctabs" data-sortable="notes" data-axis="x">${tabs}<button class="new" data-act="newNote" data-pid="${pid || ''}">+ New note</button></div>`;
   if (!n) return `<section class="panel notes">${header}<div class="empty">No notes yet.</div></section>`;
-  return `<section class="panel notes" data-drop="${n.id}">
-    ${header}
+  return `<section class="panel notes" data-drop="${n.id}">${header}${noteBody(n, false)}</section>`;
+}
+
+function noteBody(n, card) {
+  return `
     <input class="note-title serif" value="${esc(n.title)}" placeholder="Untitled" data-input="noteTitle" data-id="${n.id}">
     <div class="toolbar">
+      <button data-cmd="h2" title="Big header (type # then space, or ⌘⌥1)">H1</button>
+      <button data-cmd="h3" title="Medium header (## then space, or ⌘⌥2)">H2</button>
+      <button data-cmd="h4" title="Small header (### then space, or ⌘⌥3)">H3</button>
+      <span class="sep"></span>
       <button data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
       <button data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
+      <button data-cmd="underline" title="Underline (⌘U)"><u>U</u></button>
       <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+      <button data-cmd="color" class="tb-color" title="Text colour & highlight">A</button>
       <span class="sep"></span>
-      <button data-cmd="h3" title="Heading">H</button>
-      <button data-cmd="insertUnorderedList" title="Bullet list">• List</button>
-      <button data-cmd="insertOrderedList" title="Numbered list">1. List</button>
-      <button data-cmd="blockquote" title="Callout">❝</button>
+      <button data-cmd="insertUnorderedList" title="Bullet list (- then space). Tab indents, ⇧Tab outdents">• List</button>
+      <button data-cmd="insertOrderedList" title="Numbered list (1. then space)">1. List</button>
+      <button data-cmd="blockquote" title="Callout (> then space)">❝</button>
       <button data-cmd="link" title="Link">🔗</button>
+      <button data-cmd="insert" title="Emoji & symbols (arrows, ticks, maths…)">🙂</button>
       <span class="sep"></span>
-      <button data-act="addImages" data-id="${n.id}" title="Add images">🖼 Images</button>
+      <button data-act="addImages" data-id="${n.id}" title="Add images">🖼${card ? '' : ' Images'}</button>
     </div>
     <div class="editor" contenteditable="true" data-input="noteBody" data-id="${n.id}">${sanitize(n.html)}</div>
     ${gallery(n)}
-    <div class="note-foot"><span>${plural(n.imageIds.length, 'image')}</span><span class="sp"></span><button data-act="deleteNote" data-id="${n.id}">Delete note</button></div>
-  </section>`;
+    <div class="note-foot"><span>${card ? 'Edited ' + ago(n.updated) + ' · ' : ''}${plural(n.imageIds.length, 'image')}</span><span class="sp"></span><button data-act="deleteNote" data-id="${n.id}">Delete note</button></div>`;
 }
 
 function gallery(n) {
   const ids = n.imageIds;
-  if (!ids.length) return `<div class="drop-hint" data-act="addImages" data-id="${n.id}">Drop, paste or click to add images — they'll sit here as a small gallery.</div>`;
+  if (!ids.length) return `<div class="drop-hint" data-nosort data-act="addImages" data-id="${n.id}">Drop, paste or click to add images — they'll sit here as a small gallery.</div>`;
   const show = ids.length > 4 ? ids.slice(0, 3) : ids;
   const more = ids.length - show.length;
-  return `<div class="gallery">
+  return `<div class="gallery" data-nosort>
     ${show.map((id, i) => `<button class="thumb" data-img="${id}" data-act="openImage" data-note="${n.id}" data-i="${i}" aria-label="Open image"></button>`).join('')}
     ${more ? `<button class="thumb more" data-act="openGallery" data-note="${n.id}">+${more}</button>` : ''}
     <button class="thumb add" data-act="addImages" data-id="${n.id}" title="Add images">+</button>

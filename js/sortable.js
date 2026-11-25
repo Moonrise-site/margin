@@ -4,7 +4,7 @@
 const handlers = {};
 export const onSort = (kind, fn) => { handlers[kind] = fn; };
 
-const IGNORE = 'input, textarea, select, button.chk, .x, .datepick, [contenteditable], [data-cmd]';
+const IGNORE = 'input, textarea, select, button.chk, .x, .datepick, [contenteditable], [data-cmd], [data-nosort], .toolbar';
 const LONG_PRESS = 350;
 let st = null;
 

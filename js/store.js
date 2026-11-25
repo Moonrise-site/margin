@@ -3,6 +3,9 @@ import { kvGet, kvSet } from './db.js';
 import { uid, today, addDays, isDate, isTime } from './util.js';
 
 export const COLORS = ['peach', 'sage', 'blue', 'plum', 'gold', 'rose', 'teal', 'slate'];
+// A project colour is either a preset name or any custom '#rrggbb'.
+export const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
+export const colorVar = c => (COLORS.includes(c) ? `var(--c-${c})` : isHex(c) ? c : 'var(--c-peach)');
 
 export let state = null;
 
@@ -70,7 +73,8 @@ function migrate() {
   s.projects.forEach(p => {
     p.name = String(p.name ?? 'Untitled');
     p.emoji = String(p.emoji ?? '');
-    if (!COLORS.includes(p.color)) p.color = 'peach';
+    if (!COLORS.includes(p.color) && !isHex(p.color)) p.color = 'peach';
+    if (p.notesView !== 'cards') delete p.notesView;
     if (!isDate(p.due)) p.due = null;
     if (!safeId(p.coverId)) p.coverId = null;
     p.created ||= Date.now();

@@ -29,9 +29,18 @@ It gets its own Dock icon and window, and works offline. You don't need the laun
 
 See **SYNC-SETUP.md**. It uses a free Supabase account, and everything is encrypted on your devices first.
 
+## Writing notes
+
+- **Headers**: H1 / H2 / H3 in the toolbar, or type `# `, `## `, `### ` at the start of a line (⌘⌥1/2/3).
+- **Lists**: `- ` for bullets, `1. ` for numbers. **Tab** indents a list item, **⇧Tab** brings it back.
+- **Colours**: select text, then **A** for text colour or highlight.
+- **Emoji & symbols**: the 🙂 button (hold ⇧ to insert several). `->` `<-` `=>` turn into → ← ⇒ as you type; ⌘Z undoes it.
+- **Tabs or Cards**: the switch above a project's notes shows one note at a time, or all of them as stacked cards.
+- Project icon and colour (any colour, via the rainbow circle) are under **Customize**.
+
 ## Reordering
 
-Drag projects (sidebar or Today cards), tasks inside a project, note tabs, and images in the gallery view. On a phone, press and hold first.
+Drag projects (sidebar or Today cards), tasks inside a project, note tabs or note cards, and images in the gallery view. On a phone, press and hold first.
 
 ## Where your data lives
 
@@ -52,4 +61,5 @@ Items are encrypted with AES‑256‑GCM. The key comes from your master passwor
 - `js/images.js`, `js/db.js`: image and database storage
 - `js/sync.js`: encrypted sync; `supabase-setup.sql`: the database setup it needs
 - `js/sortable.js`: drag to reorder
+- `js/picker.js`: emoji, symbols and colour pickers
 - `sw.js`, `manifest.webmanifest`, `icons/`: installable app and offline mode

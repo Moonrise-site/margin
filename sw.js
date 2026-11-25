@@ -1,10 +1,10 @@
 // Offline support: serve the app from cache, refresh the cache in the background.
 // New versions show up the next time the app is opened. Sync traffic (other origins) is never cached.
-const CACHE = 'margin-v4';
+const CACHE = 'margin-v5';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/views.js', 'js/store.js', 'js/db.js', 'js/util.js', 'js/images.js',
-  'js/vault.js', 'js/sortable.js', 'js/sync.js',
+  'js/vault.js', 'js/sortable.js', 'js/sync.js', 'js/picker.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 

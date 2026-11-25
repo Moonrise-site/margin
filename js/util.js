@@ -69,8 +69,10 @@ export const blobToB64 = b => new Promise(r => { const f = new FileReader(); f.o
 export const stripTags = html => (html || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
 
 // ---- note HTML sanitizer (notes are rich text; keep a small safe subset) ----
-const ALLOWED = new Set(['P', 'DIV', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'H3', 'H4', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'A', 'CODE', 'PRE', 'SPAN', 'HR']);
+const ALLOWED = new Set(['P', 'DIV', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'A', 'CODE', 'PRE', 'SPAN', 'HR']);
 const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'TEMPLATE', 'SVG', 'MATH', 'FORM', 'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'IMG', 'VIDEO', 'AUDIO']);
+// Text colours and highlights are stored as names, so they adapt to light/dark theme.
+export const TINTS = ['ink', 'muted', 'rose', 'peach', 'gold', 'sage', 'teal', 'blue', 'plum'];
 function clean(node) {
   for (const c of [...node.childNodes]) {
     if (c.nodeType === 3) continue;
@@ -79,6 +81,7 @@ function clean(node) {
     if (!ALLOWED.has(c.tagName)) { c.replaceWith(...c.childNodes); continue; }
     for (const a of [...c.attributes]) {
       if (c.tagName === 'A' && a.name === 'href' && /^https?:/i.test(a.value.trim())) continue;
+      if (c.tagName === 'SPAN' && (a.name === 'data-tc' || a.name === 'data-hl') && TINTS.includes(a.value)) continue;
       c.removeAttribute(a.name);
     }
     if (c.tagName === 'A') { c.setAttribute('target', '_blank'); c.setAttribute('rel', 'noopener noreferrer'); }

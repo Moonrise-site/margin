@@ -1,4 +1,5 @@
-import { $, $$, esc, today, ymd, sanitize, stripTags, shiftMonth, b64, unb64, blobToB64 } from './util.js';
+import { $, $$, esc, today, ymd, sanitize, stripTags, shiftMonth, b64, unb64, blobToB64, TINTS } from './util.js';
+import { charPicker, colorPicker, closePicker, pickerOpenFor } from './picker.js';
 import * as St from './store.js';
 import * as V from './vault.js';
 import { kvGet, kvSet, kvDel, imgAll, imgPut, imgClear } from './db.js';
@@ -29,6 +30,7 @@ function view() {
 }
 
 function render() {
+  closePicker();
   const theme = S().settings.theme;
   document.documentElement.dataset.theme = theme;
   localStorage.setItem('margin-theme', theme);
@@ -83,7 +85,7 @@ function modal(html, { onSubmit, onMount, cls = '' } = {}) {
   o.className = 'overlay';
   o.innerHTML = `<div class="modal ${cls}">${html}</div>`;
   document.body.append(o);
-  const close = () => o.remove();
+  const close = () => { closePicker(); o.remove(); };
   o._close = close;
   o.addEventListener('mousedown', e => { if (e.target === o) o._close(); });
   $$('[data-close]', o).forEach(b => b.addEventListener('click', () => o._close()));
@@ -226,27 +228,118 @@ function galleryModal(noteId) {
 }
 
 // ================= editor =================
+function editorOf(btn) { return btn.closest('.notes')?.querySelector('.editor'); }
+function ensureFocus(ed) {
+  if (ed.contains(getSelection().anchorNode)) { if (document.activeElement !== ed) ed.focus(); return; }
+  ed.focus();
+  const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+  getSelection().removeAllRanges(); getSelection().addRange(r);
+}
+const changed = ed => ed.dispatchEvent(new Event('input', { bubbles: true }));
+const BLOCKS = ['h2', 'h3', 'h4', 'blockquote'];
+const LISTS = ['insertUnorderedList', 'insertOrderedList', 'indent', 'outdent'];
+// Chrome sometimes puts a new list inside a <p>; lift it out (keeping the cursor where it is).
+function tidyLists(ed) {
+  const bad = [...ed.querySelectorAll('p, div')].filter(p => p.querySelector(':scope > ul, :scope > ol'));
+  if (!bad.length) return;
+  const sel = getSelection(), n = sel.anchorNode, o = sel.anchorOffset;
+  bad.forEach(p => p.replaceWith(...p.childNodes));
+  if (n && ed.contains(n)) sel.collapse(n, o);
+}
+function listCmd(ed, cmd) { document.execCommand(cmd); tidyLists(ed); }
+const elOf = n => (n?.nodeType === 3 ? n.parentElement : n);
+function setBlock(tag) {
+  const cur = String(document.queryCommandValue('formatBlock') || '').toLowerCase();
+  document.execCommand('formatBlock', false, cur === tag ? 'p' : tag);
+}
+
 function fmt(cmd, btn) {
-  const ed = btn.closest('.notes')?.querySelector('.editor');
+  const ed = editorOf(btn);
   if (!ed) return;
-  if (!ed.contains(document.activeElement) && document.activeElement !== ed) {
-    ed.focus();
-    const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
-    getSelection().removeAllRanges(); getSelection().addRange(r);
+  if (cmd === 'insert' || cmd === 'color') {
+    if (pickerOpenFor(btn)) return closePicker();
+    ensureFocus(ed);
+    const saved = getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
+    const restore = () => { ed.focus(); if (saved) { getSelection().removeAllRanges(); getSelection().addRange(saved); } };
+    if (cmd === 'insert') charPicker(btn, { onPick: ch => { restore(); document.execCommand('insertText', false, ch); saved?.setStart(getSelection().anchorNode, getSelection().anchorOffset); saved?.collapse(true); changed(ed); } });
+    else colorPicker(btn, (kind, name) => { restore(); applyTint(ed, kind, name); });
+    return;
   }
-  if (cmd === 'h3' || cmd === 'blockquote') {
-    const cur = String(document.queryCommandValue('formatBlock') || '').toLowerCase();
-    document.execCommand('formatBlock', false, cur === cmd ? 'p' : cmd);
-  } else if (cmd === 'link') {
+  ensureFocus(ed);
+  if (BLOCKS.includes(cmd)) setBlock(cmd);
+  else if (cmd === 'link') {
     const url = prompt('Link address (https://…)');
     if (!url) return;
     const u = /^https?:\/\//i.test(url) ? url : 'https://' + url;
     if (getSelection().isCollapsed) document.execCommand('insertText', false, u);
     document.execCommand('createLink', false, u);
+  } else if (LISTS.includes(cmd)) {
+    listCmd(ed, cmd);
   } else {
     document.execCommand(cmd);
   }
-  ed.dispatchEvent(new Event('input', { bubbles: true }));
+  changed(ed);
+}
+
+// Colours: let the browser wrap the selection using a marker colour, then turn those
+// wrappers into <span data-tc|data-hl="name"> so colours follow the light/dark theme.
+function applyTint(ed, kind, name) {
+  if (getSelection().isCollapsed) { toast('Select some text first'); return; }
+  const n = (kind === 'tc' ? 0x0a0b00 : 0x0a0c00) + (name ? TINTS.indexOf(name) + 1 : 0x20);
+  const hex = '#' + n.toString(16).padStart(6, '0');
+  const rgb = `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+  const attr = kind === 'tc' ? 'data-tc' : 'data-hl';
+  document.execCommand('styleWithCSS', false, kind === 'hl');
+  document.execCommand(kind === 'tc' ? 'foreColor' : 'hiliteColor', false, hex);
+  document.execCommand('styleWithCSS', false, false);
+  for (const el of [...ed.querySelectorAll('font, [style]')]) {
+    const hit = kind === 'tc'
+      ? (el.getAttribute('color') || '').toLowerCase() === hex || el.style.color === rgb
+      : el.style.backgroundColor === rgb;
+    if (!hit) continue;
+    const span = document.createElement('span');
+    if (el.tagName === 'FONT' || el.tagName === 'SPAN') { span.append(...el.childNodes); el.replaceWith(span); }
+    else { el.style.removeProperty(kind === 'tc' ? 'color' : 'background-color'); if (!el.getAttribute('style')) el.removeAttribute('style'); span.append(...el.childNodes); el.append(span); }
+    span.querySelectorAll(`[${attr}]`).forEach(x => x.replaceWith(...x.childNodes));
+    const outer = span.parentElement?.closest(`[${attr}]`);
+    if (name) span.setAttribute(attr, name);
+    else if (outer && outer === span.parentElement && outer.childNodes.length === 1) { outer.replaceWith(span); span.replaceWith(...span.childNodes); } // whole coloured bit cleared
+    else if (outer) span.setAttribute(attr, 'ink'); // cancel an outer colour for part of it
+    else span.replaceWith(...span.childNodes);
+  }
+  ed.normalize();
+  changed(ed);
+}
+
+// Typing shortcuts at the start of a line: "# " "## " "### " headers, "- " "* " bullets, "1. " numbers, "> " callout.
+const MD = { '#': 'h2', '##': 'h3', '###': 'h4', '>': 'blockquote', '-': 'ul', '*': 'ul', '1.': 'ol' };
+function markdownShortcut(ed) {
+  const sel = getSelection();
+  if (!sel.isCollapsed || sel.anchorNode?.nodeType !== 3) return false;
+  let block = sel.anchorNode.parentElement;
+  while (block !== ed && !/^(P|DIV|H2|H3|H4|LI|BLOCKQUOTE)$/.test(block.tagName)) block = block.parentElement;
+  if (block.tagName === 'LI') return false;
+  const r = document.createRange(); r.setStart(block, 0); r.setEnd(sel.anchorNode, sel.anchorOffset);
+  const tag = MD[r.toString()];
+  if (!tag) return false;
+  sel.removeAllRanges(); sel.addRange(r);
+  document.execCommand('delete');
+  if (tag === 'ul') listCmd(ed, 'insertUnorderedList');
+  else if (tag === 'ol') listCmd(ed, 'insertOrderedList');
+  else document.execCommand('formatBlock', false, tag);
+  return true;
+}
+// Arrows as you type: -> → , <- ← , => ⇒ (⌘Z undoes it).
+const ARROWS = { '->': '→', '<-': '←', '=>': '⇒' };
+function arrowShortcut(key) {
+  const sel = getSelection(), node = sel.anchorNode, off = sel.anchorOffset;
+  if (!sel.isCollapsed || node?.nodeType !== 3 || off < 1) return false;
+  const out = ARROWS[node.data[off - 1] + key];
+  if (!out) return false;
+  const r = document.createRange(); r.setStart(node, off - 1); r.setEnd(node, off);
+  sel.removeAllRanges(); sel.addRange(r);
+  document.execCommand('insertText', false, out);
+  return true;
 }
 
 // ================= modals: project / event / vault item / settings =================
@@ -257,22 +350,34 @@ function projectModal(p) {
     <h2 class="serif">${isNew ? 'New project' : 'Customize project'}</h2>
     <label class="fld"><span>Name</span><input name="name" value="${esc(v.name)}" required placeholder="e.g. Apartment move" autocomplete="off"></label>
     <div class="fld-row">
-      <label class="fld" style="flex:0 0 96px"><span>Icon (emoji)</span><input name="emoji" value="${esc(v.emoji)}" maxlength="8" placeholder="🌿" autocomplete="off"></label>
+      <div class="fld" style="flex:0 0 auto"><span>Icon</span><div class="emoji-field">
+        <button type="button" class="emoji-btn" data-emoji title="Choose an emoji">${esc(v.emoji) || '<em>＋</em>'}</button>
+        <input type="hidden" name="emoji" value="${esc(v.emoji)}"></div></div>
       <label class="fld"><span>Due date (optional)</span><input type="date" name="due" value="${v.due || ''}"></label>
     </div>
     <div class="fld"><span>Colour</span><div class="swatches">
       ${St.COLORS.map(c => `<label title="${c}"><input type="radio" name="color" value="${c}" ${c === v.color ? 'checked' : ''}><i style="background:var(--c-${c})"></i></label>`).join('')}
+      <span class="sw-sep"></span>
+      <span class="sw-custom" title="Pick any colour"><input type="radio" name="color" value="${St.isHex(v.color) ? v.color : ''}" ${St.isHex(v.color) ? 'checked' : ''}><i style="${St.isHex(v.color) ? `background:${v.color}` : ''}"></i><input type="color" value="${St.isHex(v.color) ? v.color : '#3a7bd5'}"></span>
     </div></div>
     <div class="mfoot">${isNew ? '' : '<button type="button" class="btn danger" data-del>Delete project</button>'}<span class="sp"></span>
       <button type="button" class="btn" data-close>Cancel</button><button class="btn p">${isNew ? 'Create project' : 'Save'}</button></div>
   </form>`, {
     onSubmit: (d, close) => {
-      const fields = { name: d.name.trim() || 'Untitled', emoji: d.emoji.trim(), color: d.color, due: d.due || null };
+      const color = St.COLORS.includes(d.color) || St.isHex(d.color) ? d.color : (p?.color || 'peach');
+      const fields = { name: d.name.trim() || 'Untitled', emoji: d.emoji.trim(), color, due: d.due || null };
       close();
       if (isNew) { const np = St.addProject(fields); St.save(); location.hash = '#/p/' + np.id; }
       else { Object.assign(p, fields); St.commit(); }
     },
     onMount: (o, close) => {
+      const eb = $('[data-emoji]', o), ei = $('input[name=emoji]', o);
+      const setEmoji = ch => { ei.value = ch; eb.innerHTML = ch ? esc(ch) : '<em>＋</em>'; };
+      eb.addEventListener('click', () => pickerOpenFor(eb) ? closePicker()
+        : charPicker(eb, { tabs: ['emoji', 'symbols'], onPick: setEmoji, onClear: () => setEmoji(''), clearLabel: 'No icon' }));
+      const cc = $('.sw-custom input[type=color]', o), cr = $('.sw-custom input[type=radio]', o);
+      const pickCustom = () => { cr.value = cc.value; cr.checked = true; cr.nextElementSibling.style.background = cc.value; };
+      cc.addEventListener('input', pickCustom); cc.addEventListener('click', pickCustom);
       $('[data-del]', o)?.addEventListener('click', async () => {
         if (!(await confirmBox(`Delete “${p.name}” with all its notes, images, tasks and events? This can't be undone.`))) return;
         close();
@@ -531,7 +636,7 @@ function openPalette() {
   document.body.append(o);
   const inp = $('input', o), res = $('.results', o);
   let items = [], sel = 0;
-  const close = () => o.remove();
+  const close = () => { closePicker(); o.remove(); };
   o._close = close;
   o.addEventListener('mousedown', e => { if (e.target === o) close(); });
   const go = h => { location.hash = h; };
@@ -545,7 +650,7 @@ function openPalette() {
     [['☀︎', 'Today', '#/today'], ['✓', 'General', '#/todo'], ['▦', 'Calendar', '#/calendar'], ['🔒', 'Vault', '#/vault']]
       .filter(n => !q || m(n[1])).forEach(n => items.push({ icon: n[0], label: n[1], hint: 'Go to', run: () => go(n[2]) }));
     St.projects().filter(p => !q || m(p.name)).forEach(p => items.push({
-      icon: `<i class="dot" style="background:var(--c-${p.color})"></i>`, label: (p.emoji ? p.emoji + ' ' : '') + p.name, hint: 'Project', run: () => go('#/p/' + p.id),
+      icon: `<i class="dot" style="background:${St.colorVar(p.color)}"></i>`, label: (p.emoji ? p.emoji + ' ' : '') + p.name, hint: 'Project', run: () => go('#/p/' + p.id),
     }));
     if (q) {
       S().tasks.filter(t => m(t.title)).slice(0, 8).forEach(t => items.push({
@@ -640,7 +745,15 @@ const A = {
     const pid = el.dataset.pid || null;
     const n = St.addNote(pid, '');
     ui.activeNote[pid || 'general'] = n.id;
-    refocus = '.note-title';
+    refocus = `.note-title[data-id="${n.id}"]`;
+    St.commit();
+    $(refocus)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  },
+  notesView: el => {
+    const pid = el.dataset.pid, v = el.dataset.v === 'cards' ? 'cards' : undefined;
+    const owner = pid ? St.proj(pid) : S().settings;
+    if (!owner) return;
+    if (v) owner.notesView = v; else delete owner.notesView;
     St.commit();
   },
   deleteNote: async el => {
@@ -771,6 +884,24 @@ document.addEventListener('keydown', e => {
   if (blur && e.key === 'Enter') { e.preventDefault(); blur.blur(); }
   if (e.target.matches?.('.quick textarea') && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) A.saveQuick();
   if (e.target.matches?.('.note-title') && e.key === 'Enter') { e.preventDefault(); e.target.closest('.notes').querySelector('.editor').focus(); }
+  const ed = e.target.closest?.('.editor');
+  if (!ed) return;
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const inList = elOf(getSelection().anchorNode)?.closest('li');
+    if (inList && ed.contains(inList)) listCmd(ed, e.shiftKey ? 'outdent' : 'indent');
+    else if (!e.shiftKey) document.execCommand('insertText', false, '\t');
+    changed(ed);
+  } else if ((e.key === '>' || e.key === '-') && !e.metaKey && !e.ctrlKey && arrowShortcut(e.key)) {
+    e.preventDefault(); changed(ed);
+  } else if (e.key === ' ' && !e.metaKey && !e.ctrlKey && markdownShortcut(ed)) {
+    e.preventDefault(); changed(ed);
+  } else if ((e.metaKey || e.ctrlKey) && e.altKey && /^Digit[0-3]$/.test(e.code)) {
+    e.preventDefault();
+    const tag = ['p', 'h2', 'h3', 'h4'][+e.code.slice(5)];
+    tag === 'p' ? document.execCommand('formatBlock', false, 'p') : setBlock(tag);
+    changed(ed);
+  }
 });
 
 // Paste: images go to the gallery; text is pasted as plain text (keeps notes tidy and safe).
