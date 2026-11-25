@@ -29,9 +29,7 @@ When it asks, choose **Use synced data** so the new device starts as an exact co
 
 A phone can't reach `localhost` on your Mac, so Margin has to be online at an `https://` address. It's just the app's files; your data never goes there. Then open that address in Safari on the iPhone, tap **Share → Add to Home Screen**, and set up sync as in step 3.
 
-To get it online, any free static host works:
-- **GitHub Pages**: put the `margin` folder in a repository and turn on Pages.
-- **Netlify Drop** (app.netlify.com/drop): drag the `margin` folder onto the page.
+Margin is online at **https://moonrise-site.github.io/margin/** (published from the GitHub repository Moonrise-site/margin; pushing changes there updates it).
 
 The online copy is a different address from `localhost`, so it starts empty. Sync brings everything across once you sign in.
 

@@ -4,7 +4,9 @@ A calm planner: projects with notes, to‑dos and a calendar, a General list, an
 
 ## Opening it
 
-Double-click **Open Margin.command** (the first time, macOS may ask you to right-click → Open).
+**Online:** https://moonrise-site.github.io/margin/ (use this one on every device; install it from there).
+
+Or run it locally: Double-click **Open Margin.command** (the first time, macOS may ask you to right-click → Open).
 Or from a terminal in this folder:
 
 ```bash
